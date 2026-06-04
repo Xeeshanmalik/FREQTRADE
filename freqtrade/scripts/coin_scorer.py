@@ -267,7 +267,10 @@ def detect_liquidity_sweep(df: pd.DataFrame, lookback: int = 20) -> dict:
 
     lows = df["low"]
     n = len(df)
-    for i in range(lookback, n):
+    # Only the last 6 candles can satisfy the bars_ago <= 5 recency gate below, so
+    # restrict the (per-candle rolling-quantile) scan to them. Earlier candles were
+    # computed and then discarded — identical result, ~100x fewer quantiles.
+    for i in range(max(lookback, n - 6), n):
         window_lows = lows.iloc[i - lookback : i]
         support_level = window_lows.quantile(0.15)  # approximate stop cluster
 
@@ -346,9 +349,20 @@ SECTOR_MAP = {
     "SUI/USDT": "smart-contract",
     "INJ/USDT": "defi",
     "RNDR/USDT": "ai",
+    "RENDER/USDT": "ai",
     "FET/USDT": "ai",
     "TAO/USDT": "ai",
     "LTC/USDT": "payments",
+    "BCH/USDT": "payments",
+    "XLM/USDT": "payments",
+    "TRX/USDT": "smart-contract",
+    "TON/USDT": "smart-contract",
+    "ICP/USDT": "compute",
+    "PEPE/USDT": "meme",
+    "MEME/USDT": "meme",
+    "ENA/USDT": "defi",
+    "ONDO/USDT": "rwa",
+    "ZEC/USDT": "privacy",
 }
 
 
