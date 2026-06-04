@@ -1,5 +1,8 @@
 # ── Credentials & secrets (NEVER commit these) ─────────────────────────────
 freqtrade/user_data/config.json
+freqtrade/user_data/config.json.bak
+freqtrade/user_data/*.bak
+freqtrade/user_data/archive/
 .env
 *.env
 
