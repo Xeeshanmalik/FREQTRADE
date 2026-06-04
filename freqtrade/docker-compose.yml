@@ -9,5 +9,8 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}   # Claude pre-entry veto layer
     entrypoint: /bin/bash
-    command: -c "pip install google-generativeai && freqtrade trade --logfile /freqtrade/user_data/logs/freqtrade.log --db-url sqlite:////freqtrade/user_data/tradesv3.sqlite --config /freqtrade/user_data/config.json --strategy GeminiHybridStrategy"
+    # Mount note: only ./user_data is bind-mounted; the daily cycle docker-cp's
+    # ./scripts into the container before running the scanner.
+    command: -c "pip install google-generativeai && freqtrade trade --logfile /freqtrade/user_data/logs/freqtrade.log --db-url sqlite:////freqtrade/user_data/tradesv3.sqlite --config /freqtrade/user_data/config.json --strategy UltraPrecisionStrategy"

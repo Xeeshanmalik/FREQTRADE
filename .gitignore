@@ -26,3 +26,6 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+
+# Locally generated backtest config (may copy secrets from config.json)
+freqtrade/user_data/config_backtest.json
