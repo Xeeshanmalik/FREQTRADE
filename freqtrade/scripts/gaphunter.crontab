@@ -1,0 +1,7 @@
+# ─── GapHunter Daily Cycle (UTC) ────────────────────────────────────────────
+# Morning: download data, scan gaps, Claude review, update whitelist, restart
+0 6 * * * /root/code/freqtrade/freqtrade/scripts/run_daily_cycle.sh >> /var/log/gaphunter.log 2>&1
+# Evening: extract performance, Claude learning review, adapt weights, hyperopt check
+0 20 * * * /root/code/freqtrade/freqtrade/scripts/run_evening_cycle.sh >> /var/log/gaphunter.log 2>&1
+# Watchdog: keep the freqtrade container up
+*/15 * * * * docker ps | grep -q freqtrade || docker start freqtrade
