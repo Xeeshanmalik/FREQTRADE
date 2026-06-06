@@ -32,13 +32,14 @@ docker exec "$CONTAINER" freqtrade download-data \
 # ── Step 2: gap scanner (inside container) ────────────────────────────────────
 log "Copying scanner scripts into container and running GapHunter…"
 docker cp "$REPO/scripts/." "$CONTAINER:/freqtrade/scripts/" >/dev/null
-# --min-score 45: the plan's 60 is unreachable in practice; 45 is the gate that
-# was most robust out-of-sample (see gap_score_threshold in the strategy).
+# --min-score 40: looser than the 45 default; ~2x trade frequency at a thinner
+# per-trade edge (PF 1.76 vs 2.14, +14.7% vs +8.9% over 2025-06-20..2026-06-04).
+# See gap_score_threshold in the strategy.
 docker exec "$CONTAINER" python3 /freqtrade/scripts/daily_gap_scan.py \
   --data-dir /freqtrade/user_data/data/binance \
   --output   /freqtrade/user_data/gap_analysis/daily_scores.json \
   --weights  /freqtrade/user_data/gap_analysis/score_weights.json \
-  --min-score 45
+  --min-score 40
 
 # ── Step 3: refresh 7-day performance (host, stdlib) ──────────────────────────
 if [[ -f "$DB" ]]; then
