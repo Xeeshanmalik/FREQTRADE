@@ -161,7 +161,7 @@ class UltraPrecisionStrategy(IStrategy):
     # week. The edge is real and generalises in sign, but magnitude out-of-sample
     # is modest (PF ~2.4) — treat in-sample's PF ~9 as regime-favourable, not
     # typical. Samples are small (8-19 trades/window): directional, not precise.
-    gap_score_threshold = IntParameter(35, 60, default=45, space="buy")
+    gap_score_threshold = IntParameter(35, 60, default=40, space="buy")
 
     atr_stop_multiplier = DecimalParameter(1.0, 3.0, default=2.0, space="stoploss")
     atr_trail_multiplier = DecimalParameter(0.2, 0.8, default=0.5, space="stoploss")
