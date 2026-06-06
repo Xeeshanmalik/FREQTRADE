@@ -59,6 +59,11 @@ WATCHLIST_PATH = Path(__file__).resolve().parents[1] / "gap_analysis" / "daily_s
 HISTORICAL_WATCHLIST_PATH = (
     Path(__file__).resolve().parents[1] / "gap_analysis" / "historical_watchlists.json"
 )
+# Entry-veto calendar: macro-event (FOMC/CPI) blackout windows + per-coin token
+# unlock dates. Applied in both live and backtest so its effect is measurable.
+EVENT_BLACKOUT_PATH = (
+    Path(__file__).resolve().parents[1] / "gap_analysis" / "event_blackouts.json"
+)
 REGIME_ANCHOR = "BTC/USDT"
 
 
@@ -102,6 +107,35 @@ class UltraPrecisionStrategy(IStrategy):
     trailing_stop = False
     use_custom_stoploss = True
 
+    # ── Streak / drawdown circuit-breakers (Layer 0 — capital preservation) ────
+    # Active in live/dry-run; in backtest only with --enable-protections. Tuned
+    # for a low-frequency single-slot system: they almost never fire in normal
+    # operation and exist to halt trading through a genuinely bad regime before a
+    # streak compounds. (config-level "protections" is deprecated in 2026.1, so
+    # this lives on the strategy.)
+    @property
+    def protections(self):
+        return [
+            # Pause briefly after every exit so we don't re-fire on the same candle noise.
+            {"method": "CooldownPeriod", "stop_duration_candles": 3},
+            # 2 stoplosses inside a day -> stand down for a day.
+            {
+                "method": "StoplossGuard",
+                "lookback_period_candles": 288,
+                "trade_limit": 2,
+                "stop_duration_candles": 288,
+                "only_per_pair": False,
+            },
+            # Hard account kill-switch: >20% drawdown over ~5d (min 3 trades) -> halt 2.5d.
+            {
+                "method": "MaxDrawdown",
+                "lookback_period_candles": 1440,
+                "trade_limit": 3,
+                "stop_duration_candles": 720,
+                "max_allowed_drawdown": 0.20,
+            },
+        ]
+
     # ── Hyperopt parameter space (defaults tuned for 4-6 trades/week) ──────────
     buy_stoch_max = IntParameter(10, 30, default=25, space="buy")
     buy_volume_ratio = DecimalParameter(1.0, 2.5, default=1.3, space="buy")
@@ -141,6 +175,11 @@ class UltraPrecisionStrategy(IStrategy):
     _watchlist_cache: dict = {}
     _watchlist_mtime: float = 0.0
     _historical_cache: Optional[dict] = None
+    # Parsed event-blackout calendar (macro windows + per-pair unlock windows).
+    _blackout_cache: Optional[dict] = None
+    # Hours before/after a token unlock to stand aside (supply overhang then settle).
+    unlock_pre_h: int = 24
+    unlock_post_h: int = 6
 
     # -------------------------------------------------------------------------
     # Informative data
@@ -344,6 +383,14 @@ class UltraPrecisionStrategy(IStrategy):
         map is present we fall back to ungated (legacy behaviour) so vanilla
         backtests still run. Live/dry-run: use today's scanner output.
         """
+        # Layer 0b — event blackout: never open into a known macro shock (FOMC/CPI)
+        # or an imminent token unlock. Applies in every runmode so the backtest
+        # measures it. Fail-open: a missing/empty calendar means no veto.
+        blocked, why = self._in_event_blackout(pair, current_time)
+        if blocked:
+            logger.info("[%s] Event blackout (%s) — vetoing entry.", pair, why)
+            return False
+
         if self.dp and self.dp.runmode.value in ("backtest", "hyperopt", "plot"):
             return self._confirm_from_history(pair, current_time)
 
@@ -410,6 +457,62 @@ class UltraPrecisionStrategy(IStrategy):
                     logger.error("Failed to read historical watchlists: %s", exc)
                     self._historical_cache = {}
         return self._historical_cache
+
+    # -------------------------------------------------------------------------
+    # Layer 0b — event blackout (macro shocks + token unlocks)
+    # -------------------------------------------------------------------------
+    def _load_blackouts(self) -> dict:
+        """Load and cache the event-blackout calendar (macro events + unlocks)."""
+        if self._blackout_cache is None:
+            if not EVENT_BLACKOUT_PATH.exists():
+                self._blackout_cache = {}
+            else:
+                try:
+                    data = json.loads(EVENT_BLACKOUT_PATH.read_text())
+                    self._blackout_cache = {
+                        "macro": data.get("macro_events", []),
+                        "unlocks": data.get("token_unlocks", {}),
+                    }
+                    logger.info(
+                        "Loaded event blackouts: %d macro events, %d coins with unlocks",
+                        len(self._blackout_cache["macro"]),
+                        len(self._blackout_cache["unlocks"]),
+                    )
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.error("Failed to read event blackouts: %s", exc)
+                    self._blackout_cache = {}
+        return self._blackout_cache
+
+    def _in_event_blackout(self, pair: str, current_time) -> tuple:
+        """Is ``current_time`` inside a macro-event window or this pair's unlock window?
+
+        Returns ``(blocked: bool, reason: str)``. Fail-open: any parse problem or a
+        missing calendar yields ``(False, "")`` so trading is never silently halted.
+        """
+        try:
+            cfg = self._load_blackouts()
+            if not cfg:
+                return False, ""
+            t = pd.Timestamp(current_time)
+            if t.tzinfo is None:
+                t = t.tz_localize("UTC")
+            for ev in cfg.get("macro", []):
+                et = pd.Timestamp(ev["datetime"])
+                if et.tzinfo is None:
+                    et = et.tz_localize("UTC")
+                start = et - pd.Timedelta(hours=ev.get("pre_h", 1))
+                end = et + pd.Timedelta(hours=ev.get("post_h", 6))
+                if start <= t <= end:
+                    return True, ev.get("label", "macro")
+            for unlock in cfg.get("unlocks", {}).get(pair, []):
+                ut = pd.Timestamp(unlock)
+                if ut.tzinfo is None:
+                    ut = ut.tz_localize("UTC")
+                if ut - pd.Timedelta(hours=self.unlock_pre_h) <= t <= ut + pd.Timedelta(hours=self.unlock_post_h):
+                    return True, "unlock"
+        except Exception as exc:  # noqa: BLE001 — a calendar bug must not halt trading
+            logger.warning("Event-blackout check failed for %s: %s", pair, exc)
+        return False, ""
 
     def _load_watchlist(self) -> list:
         """Load and cache today's watchlist, refreshing when the file changes."""

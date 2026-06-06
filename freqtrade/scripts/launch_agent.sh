@@ -25,7 +25,7 @@ agent_cmd() {
   echo "export PATH=$HOME/.npm-global/bin:\$PATH; cd '$dir'; claude; exec bash"
 }
 
-STRATEGY_CMD="$(agent_cmd "$REPO_ROOT/strategy")"
+STRATEGY_CMD="$(agent_cmd "$REPO_ROOT")"
 
 # ════════════════════════════════════════════════════════════════════════════
 # MODE: gnome-terminal tabs (default)
@@ -66,7 +66,7 @@ tmux kill-session -t "$SESSION" 2>/dev/null || true
 
 # Enable mouse so you can click to switch windows — no key combos needed
 tmux \
-  new-session  -d -s "$SESSION" -n "strategy" -c "$REPO_ROOT/strategy_agent" "bash -c '$STRATEGY_CMD'" \;\
+  new-session  -d -s "$SESSION" -n "strategy" -c "$REPO_ROOT" "bash -c '$STRATEGY_CMD'" \;\
   select-window    -t "$SESSION:strategy"
 
 echo ""
