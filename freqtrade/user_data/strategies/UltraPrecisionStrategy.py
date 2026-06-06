@@ -102,6 +102,35 @@ class UltraPrecisionStrategy(IStrategy):
     trailing_stop = False
     use_custom_stoploss = True
 
+    # ── Streak / drawdown circuit-breakers (Layer 0 — capital preservation) ────
+    # Active in live/dry-run; in backtest only with --enable-protections. Tuned
+    # for a low-frequency single-slot system: they almost never fire in normal
+    # operation and exist to halt trading through a genuinely bad regime before a
+    # streak compounds. (config-level "protections" is deprecated in 2026.1, so
+    # this lives on the strategy.)
+    @property
+    def protections(self):
+        return [
+            # Pause briefly after every exit so we don't re-fire on the same candle noise.
+            {"method": "CooldownPeriod", "stop_duration_candles": 3},
+            # 2 stoplosses inside a day -> stand down for a day.
+            {
+                "method": "StoplossGuard",
+                "lookback_period_candles": 288,
+                "trade_limit": 2,
+                "stop_duration_candles": 288,
+                "only_per_pair": False,
+            },
+            # Hard account kill-switch: >20% drawdown over ~5d (min 3 trades) -> halt 2.5d.
+            {
+                "method": "MaxDrawdown",
+                "lookback_period_candles": 1440,
+                "trade_limit": 3,
+                "stop_duration_candles": 720,
+                "max_allowed_drawdown": 0.20,
+            },
+        ]
+
     # ── Hyperopt parameter space (defaults tuned for 4-6 trades/week) ──────────
     buy_stoch_max = IntParameter(10, 30, default=25, space="buy")
     buy_volume_ratio = DecimalParameter(1.0, 2.5, default=1.3, space="buy")
