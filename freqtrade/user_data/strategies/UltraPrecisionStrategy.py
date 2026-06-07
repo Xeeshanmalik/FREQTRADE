@@ -228,7 +228,15 @@ class UltraPrecisionStrategy(IStrategy):
         return dataframe
 
     def _merge_btc_regime(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
-        """Attach a forward-filled ``btc_below_ema200_1d`` flag to the 5m frame."""
+        """Attach a ``btc_below_ema200_1d`` flag to the 5m frame.
+
+        Uses an explicit ``merge_asof`` rather than ``merge_informative_pair``:
+        the helper was returning an all-False flag in this freqtrade build
+        (verified 2026-06-07 — the column was present but never True across a
+        100%-bear window), which silently DISABLED this regime gate (fail-open),
+        letting longs trade in bear markets contrary to Layer 1. merge_asof is
+        deterministic; each daily flag is shifted forward one day so a 1d candle
+        is only used AFTER it closes (no look-ahead)."""
         dataframe["btc_below_ema200_1d"] = False  # safe default (fail-open to trading)
         if not self.dp:
             return dataframe
@@ -238,15 +246,18 @@ class UltraPrecisionStrategy(IStrategy):
                 return dataframe
             btc = btc.copy()
             btc["ema200"] = ta.EMA(btc, timeperiod=200)
-            btc["btc_below_ema200"] = btc["close"] < btc["ema200"]
-            merged = merge_informative_pair(
-                dataframe, btc[["date", "btc_below_ema200"]], self.timeframe, "1d", ffill=True
+            flag = pd.DataFrame({
+                # available from the next day's open → no look-ahead
+                "date": btc["date"] + pd.Timedelta(days=1),
+                "btc_flag": (btc["close"] < btc["ema200"]).fillna(False).astype(bool),
+            })
+            merged = pd.merge_asof(
+                dataframe.sort_values("date"),
+                flag.sort_values("date"),
+                on="date", direction="backward",
             )
-            # merge_informative_pair suffixes the column with the informative tf.
-            col = "btc_below_ema200_1d"
-            if col in merged.columns:
-                merged[col] = merged[col].fillna(False).astype(bool)
-                return merged
+            merged["btc_below_ema200_1d"] = merged["btc_flag"].fillna(False).astype(bool)
+            return merged.drop(columns=["btc_flag"])
         except Exception as exc:  # noqa: BLE001 — never let regime merge crash analysis
             logger.warning("BTC regime merge failed (%s): trading without the gate.", exc)
         return dataframe
