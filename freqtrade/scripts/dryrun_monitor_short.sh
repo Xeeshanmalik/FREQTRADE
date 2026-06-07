@@ -91,10 +91,14 @@ def telegram(msg):
     except Exception as e:
         print(f"(telegram failed: {e})")
 
-if changes:
-    telegram("🔻 SHORT dry-run monitor\n" + headline + "\n" + "\n".join("• "+c for c in changes))
+# Trade open/close alerts now come from the short bot's OWN native Telegram
+# (@Gaphuntershortbot). This host watchdog only pushes when the bot is DOWN or
+# erroring — which native Telegram cannot report (a dead bot can't message).
+critical = [c for c in changes if "DOWN" in c or "error" in c]
+if critical:
+    telegram("⚠️ SHORT bot watchdog\n" + headline + "\n" + "\n".join("• "+c for c in critical))
 elif force == "force":
-    telegram("🔻 SHORT dry-run heartbeat\n" + headline)
+    telegram("🔻 SHORT watchdog heartbeat\n" + headline)
 
 json.dump({"closed":closed,"open":op,"tot":tot,"pnl":pnl,"regime":regime,"ts":now}, open(state_path,"w"), indent=2)
 PY
