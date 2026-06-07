@@ -14,3 +14,21 @@ services:
     # Mount note: only ./user_data is bind-mounted; the daily cycle docker-cp's
     # ./scripts into the container before running the scanner.
     command: -c "pip install google-generativeai && freqtrade trade --logfile /freqtrade/user_data/logs/freqtrade.log --db-url sqlite:////freqtrade/user_data/tradesv3.sqlite --config /freqtrade/user_data/config.json --strategy UltraPrecisionStrategy"
+
+  # Short-side paper bot: trend-following shorts on USDT perps, active only while
+  # BTC < EMA200(1d) (bear regime) — uncorrelated with the long bot, which stands
+  # aside in exactly that regime. DRY-RUN only, separate DB, telegram off (a 2nd
+  # bot can't share the live bot's token long-poll). Validated 2026-06-07:
+  # bear-window backtest +176%, PF 1.48, DD 14.7%, short-only.
+  freqtrade-short:
+    image: freqtradeorg/freqtrade:stable
+    restart: always
+    container_name: freqtrade-short
+    volumes:
+      - "./user_data:/freqtrade/user_data"
+    command: >
+      trade
+      --logfile /freqtrade/user_data/logs/freqtrade_short.log
+      --db-url sqlite:////freqtrade/user_data/tradesv3_short.sqlite
+      --config /freqtrade/user_data/config_futures_dryrun.json
+      --strategy ShortPrecisionStrategy

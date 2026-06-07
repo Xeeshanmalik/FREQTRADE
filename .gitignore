@@ -10,6 +10,9 @@ freqtrade/user_data/archive/
 freqtrade/user_data/tradesv3.sqlite
 freqtrade/user_data/tradesv3.sqlite-shm
 freqtrade/user_data/tradesv3.sqlite-wal
+freqtrade/user_data/tradesv3_short.sqlite
+freqtrade/user_data/tradesv3_short.sqlite-shm
+freqtrade/user_data/tradesv3_short.sqlite-wal
 freqtrade/user_data/hyperopt.lock
 
 # ── Logs ─────────────────────────────────────────────────────────────────────
